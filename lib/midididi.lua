@@ -6,7 +6,7 @@ local patterns = {}
 local norns_midi_event
 
 -- adjust this value if you find bumping the knob is clearing the loop
-local TOLERANCE = 1
+local TOLERANCE = 0
 
 local MIDI_EVENT_CODES = {
     [0x80] = "note_off",
@@ -83,6 +83,12 @@ end
 function Midididi.init()
     norns_midi_event = _norns.midi.event
     _norns.midi.event = on_midi_event
+end
+
+function Midididi.cleanup()
+    if norns_midi_event ~= nil then
+        _norns.midi.event = norns_midi_event
+    end
 end
 
 function Midididi.on_rec_change(callback)

@@ -6,6 +6,9 @@ local patterns = {}
 local screen_dirty = false
 local norns_midi_event
 
+-- adjust this value if you find bumping the knob is clearing the loop
+local TOLERANCE = 1
+
 local MIDI_EVENT_CODES = {
     [0x80] = "note_off",
     [0x90] = "note_on",
@@ -17,44 +20,53 @@ local function create_pattern(device_id, channel, event_id)
     pattern.device_id = device_id
     pattern.channel = channel
     pattern.event_id = event_id
-    pattern.reflection = reflection:new()
-    pattern.reflection:set_loop(1)
-    pattern.reflection.process = function(event)
+    pattern.loop = reflection:new()
+    pattern.loop:set_loop(1)
+    pattern.loop.process = function(event)
         norns_midi_event(event.device_id, event.midi_msg)
     end
     table.insert(patterns, pattern)
-    return pattern.reflection
+    return pattern
 end
 
 local function get_pattern(device_id, channel, event_id)
     for _, p in pairs(patterns) do
         if p.device_id == device_id and p.channel == channel and p.event_id == event_id then
-            return p.reflection
+            return p
         end
     end
 end
 
+local function device_recording_enabled(device_id)
+    return true
+end
+
 local function on_midi_event(device_id, midi_msg)
+    if not device_recording_enabled(device_id) then
+        norns_midi_event(device_id, midi_msg)
+        return
+    end
     local event_code = midi_msg[1] & 0xF0
     local channel = (midi_msg[1] & 0x0F) + 1
     local event_id = midi_msg[2]
     local event = MIDI_EVENT_CODES[event_code]
+    local value = midi_msg[3]
     local pattern = get_pattern(device_id, channel, event_id)
-
-    if pattern == nil then
+    if pattern == nil and device_recording_enabled(device_id) then
         pattern = create_pattern(device_id, channel, event_id)
     end
 
     if event == "note_on" then
-        pattern:clear()
-        pattern:set_rec(1)
+        pattern.loop:clear()
+        pattern.loop:set_rec(1)
     elseif pattern and event == "note_off" then
-        pattern:set_rec(0)
+        pattern.loop:set_rec(0)
     elseif pattern and event == "cc" then
-        if pattern.rec == 0 then
-            pattern:clear()
+        if pattern.loop.rec == 0 and math.abs(pattern.last_value - value) > TOLERANCE then
+            pattern.loop:clear()
         end
-        pattern:watch({ device_id = device_id, midi_msg = midi_msg })
+        pattern.last_value = value
+        pattern.loop:watch({ device_id = device_id, midi_msg = midi_msg })
     end
 
     norns_midi_event(device_id, midi_msg)
@@ -97,7 +109,7 @@ function redraw()
         screen.move(x, y)
         screen.font_size(9)
         screen.text(params:get("num" .. i))
-        if pattern and pattern.rec == 1 then
+        if pattern and pattern.loop.rec == 1 then
             screen.move(x + 11, y - 1)
             screen.font_size(7)
             screen.text("rec")

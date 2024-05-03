@@ -1,6 +1,6 @@
 local Midididi = {}
 
-reflection = require("reflection")
+local reflection = require("reflection")
 
 local patterns = {}
 local norns_midi_event
@@ -16,6 +16,7 @@ local MIDI_EVENT_CODES = {
 }
 
 local on_rec_change
+local enabled_device_id
 
 local function create_pattern(device_id, channel, event_id)
     local pattern = {}
@@ -40,12 +41,8 @@ local function get_pattern(device_id, channel, event_id)
     end
 end
 
-local function device_recording_enabled(device_id)
-    return true
-end
-
 local function on_midi_event(device_id, midi_msg)
-    if not device_recording_enabled(device_id) then
+    if device_id ~= enabled_device_id then
         norns_midi_event(device_id, midi_msg)
         return
     end
@@ -55,7 +52,7 @@ local function on_midi_event(device_id, midi_msg)
     local event = MIDI_EVENT_CODES[event_code]
     local value = midi_msg[3]
     local pattern = get_pattern(device_id, channel, event_id)
-    if pattern == nil and device_recording_enabled(device_id) then
+    if pattern == nil then
         pattern = create_pattern(device_id, channel, event_id)
     end
 
@@ -100,6 +97,10 @@ end
 
 function Midididi.on_rec_change(callback)
     on_rec_change = callback
+end
+
+function Midididi.set_device(device_id)
+    enabled_device_id = device_id
 end
 
 return Midididi

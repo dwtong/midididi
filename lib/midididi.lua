@@ -5,8 +5,9 @@ reflection = require("reflection")
 local patterns = {}
 local norns_midi_event
 
--- adjust this value if you find bumping the knob is clearing the loop
-local TOLERANCE = 0
+-- try adjusting these if you find yourself accidentally clearing loops by bumping knobs
+local TOLERANCE_TIME_MS = 200 -- time after recording cc loop stops before it can be cleared
+local TOLERANCE_DISTANCE = 0 -- difference between cc values after cc loop stops before it can be cleared
 
 local MIDI_EVENT_CODES = {
     [0x80] = "note_off",
@@ -66,11 +67,17 @@ local function on_midi_event(device_id, midi_msg)
         end
     elseif pattern and event == "note_off" then
         pattern.loop:set_rec(0)
+        pattern.tolerance_time_passed = false
+        clock.run(function()
+            clock.sleep(TOLERANCE_TIME_MS / 1000)
+            pattern.tolerance_time_passed = true
+        end)
         if on_rec_change ~= nil then
             on_rec_change(device_id, channel, event_id, 0)
         end
     elseif pattern and event == "cc" then
-        if pattern.loop.rec == 0 and math.abs(pattern.last_value - value) > TOLERANCE then
+        local tolerance_distance = math.abs(pattern.last_value - value) > TOLERANCE_DISTANCE
+        if pattern.loop.rec == 0 and tolerance_distance and pattern.tolerance_time_passed then
             pattern.loop:clear()
         end
         pattern.last_value = value
